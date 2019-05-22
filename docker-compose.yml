@@ -1,0 +1,99 @@
+---
+version: '2.4'
+services:
+    elasticsearch:
+        image: ${ELASTICSEARCH_IMAGE}
+        restart: always
+        environment:
+            - 'node.name=devnode1'
+            - 'discovery.type=single-node'
+            - 'bootstrap.memory_lock=true'
+            - 'ES_JAVA_OPTS=-Xms256m -Xmx256m'
+        ports:
+            - 9200:9200
+            - 9300:9300
+        volumes:
+            - ./elasticsearchdata:/usr/share/elasticsearch/data
+        networks:
+            - net
+        logging:
+            driver: fluentd
+            options:
+                fluentd-address: localhost:24224
+                fluentd-async-connect: 'true'
+                fluentd-retry-wait: '1s'
+                fluentd-max-retries: '30'
+                tag: ${LOG_OPT_TAG_PREFIX}.efk.elasticsearch
+    tomcat:
+        image: tomcat
+        restart: always
+        ports: 
+             - 8081:8080
+        networks:
+            - net
+        depends_on:
+            - fluentd
+        logging:
+            driver: fluentd
+            options:
+                fluentd-address: localhost:24224
+                fluentd-async-connect: 'true'
+                fluentd-retry-wait: '1s'
+                fluentd-max-retries: '30'
+                tag: ${LOG_OPT_TAG_PREFIX}.efk.tomcat
+    kibana:
+        image: ${KIBANA_IMAGE}
+        restart: always
+        ports:
+            - 5601:5601
+  #      volumes:
+  #        - ./kibana.yml:/usr/share/kibana/config/kibana.yml
+        networks:
+            - net
+        depends_on:
+            - elasticsearch
+        logging:
+            driver: fluentd
+            options:
+                fluentd-address: localhost:24224
+                fluentd-async-connect: 'true'
+                fluentd-retry-wait: '1s'
+                fluentd-max-retries: '30'
+                tag: ${LOG_OPT_TAG_PREFIX}.efk.kibana
+
+    fluentd:
+        image: ${FLUENTD_IMAGE}
+        ports:
+            - 127.0.0.1:24224:24224
+#            - 24224:24224/udp
+        volumes:
+            - ./fluentd/etc:/fluentd/etc
+            - ./fluentd/log:/fluentd/log
+        networks:
+            - net
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "1G"
+                max-file: "2"
+
+    nginx:
+        image: nginx
+        restart: always
+        ports:
+            - 8082:80
+        depends_on:
+             - fluentd
+        networks:
+            - net
+        logging:
+            driver: fluentd
+            options:
+                fluentd-address: localhost:24224
+                fluentd-async-connect: 'true'
+                fluentd-retry-wait: '1s'
+                fluentd-max-retries: '30'
+                tag: ${LOG_OPT_TAG_PREFIX}.efk.nginx
+networks:
+    net:
+        driver: bridge
